@@ -1,16 +1,10 @@
 {
-  "version": 2,
-  "name": "quantumalpha-dashboard",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": null,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_API_URL": "@quantumalpha-api-url"
-  }
+  ]
 }
