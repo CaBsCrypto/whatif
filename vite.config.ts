@@ -10,15 +10,27 @@ export default defineConfig(({mode}) => {
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
+    // Proxy API calls to the backend in development (avoids CORS issues locally)
+    server: {
+      proxy: {
+        '/api': {
+          target: env.VITE_API_URL || 'http://localhost:3000',
+          changeOrigin: true,
+        },
+        '/socket.io': {
+          target: env.VITE_API_URL || 'http://localhost:3000',
+          changeOrigin: true,
+          ws: true,
+        },
+      },
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
-    },
-    server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
 });

@@ -20,7 +20,7 @@ export class WalletService {
   }
 
   private static async getBaseWallet(): Promise<WalletInfo | null> {
-    const key = process.env.BASE_PRIVATE_KEY;
+    const key = process.env.EVM_PRIVATE_KEY;
     if (!key) return null;
     try {
       const wallet = new ethers.Wallet(key, this.baseProvider);

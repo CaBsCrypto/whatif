@@ -1,5 +1,9 @@
 import { Network, TradeSignal } from '../types';
 
+// SAFETY FLAG: If PAPER_GHOST is not 'true', GHOST will not emit any signals.
+// In production, connect to Arkham Intelligence or Birdeye API and remove this flag.
+const PAPER_GHOST = process.env.PAPER_GHOST === 'true';
+
 export interface InsiderWallet {
   address: string;
   label: string;
@@ -18,13 +22,22 @@ export class GhostAgent {
    * In production, this would use a specialized API like Arkham or Birdeye.
    */
   static async trackWallet(address: string): Promise<TradeSignal | null> {
-    console.log(`[GHOST] Scanning activity for insider: ${address}...`);
+    // SAFETY: Only emit signals in paper mode until Arkham/Birdeye is connected
+    if (!PAPER_GHOST) {
+      // Production mode: requires real API integration
+      // TODO: Replace with Arkham Intelligence API call:
+      // GET https://api.arkhamintelligence.com/transfers?address=${address}&limit=10
+      console.log(`[GHOST] [LIVE MODE - REAL API REQUIRED] Skipping simulated signal for: ${address}`);
+      return null;
+    }
+
+    console.log(`[GHOST] [PAPER] Scanning activity for insider: ${address}...`);
     
-    // Simulated detection of a buy order from an insider
-    const isActive = Math.random() > 0.8;
+    // Simulated detection — only active in paper mode
+    const isActive = Math.random() > 0.95; // ~5% trigger rate per check
     
     if (isActive) {
-      console.log(`[GHOST] 🎯 Insider ${address} detected buying!`);
+      console.log(`[GHOST] 🎯 [PAPER] Insider ${address} detected buying!`);
       return {
         network: 'base',
         tokenAddress: '0x' + Math.random().toString(16).slice(2, 10),
@@ -32,7 +45,7 @@ export class GhostAgent {
         amount: '0.5',
         tier: 4, // Moonshots/Insiders
         confidence: 0.95,
-        reason: `GHOST: Copying trade from high-winrate insider ${address}`
+        reason: `GHOST [PAPER]: Simulated copy-trade from high-winrate insider ${address}`
       };
     }
 

@@ -1,4 +1,5 @@
-export type Network = 'base' | 'solana';
+export type Network = 'base' | 'solana' | 'bnb' | 'avax' | 'monad';
+export type NetworkArchitecture = 'EVM' | 'SVM';
 
 export interface RPCConfig {
   primary: string;

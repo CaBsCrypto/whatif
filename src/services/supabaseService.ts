@@ -30,6 +30,7 @@ export interface TradeRecord {
   error?: string;
   tier: number;
   reason: string;
+  isPaperTrade?: boolean;
 }
 
 export class SupabaseService {

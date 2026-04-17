@@ -25,15 +25,22 @@ export class QuantumBrain {
     }
   });
 
-  static init() {
+  static io: any = null;
+
+  static init(ioInstance?: any) {
     if (this.isRunning) return;
     this.isRunning = true;
+    if (ioInstance) this.io = ioInstance;
 
     Logger.log('info', 'QuantumAlpha Brain Initialized. Listening for opportunities...');
 
     VortexScanner.subscribe(async (event: BlockchainEvent) => {
       await this.processEvent(event);
     });
+
+    // Activate real-time block scanning on both chains
+    VortexScanner.startScanning('solana');
+    VortexScanner.startScanning('base');
 
     // Start Ghost Insider Tracking Loop
     setInterval(async () => {
@@ -45,6 +52,11 @@ export class QuantumBrain {
         }
       }
     }, 30000); // Check every 30s
+
+    // Start Tier 1 Active Monitoring Loop (Bluechips)
+    setInterval(async () => {
+      await this.pollTier1Assets();
+    }, 60000); // Check every 60s
   }
 
   /**
@@ -66,8 +78,8 @@ export class QuantumBrain {
     Logger.log('info', `Processing event: ${event.type} for ${event.tokenAddress}`);
 
     const audit = await VenomAuditor.auditContract(event.tokenAddress, event.network);
-    const mockPrices = Array.from({ length: 20 }, () => 100 + Math.random() * 10);
-    const strategy = QuantumStrategy.evaluate(mockPrices, audit, null);
+    const prices = await MatrixEngine.fetchPricesForToken(event.tokenAddress, event.network);
+    const strategy = QuantumStrategy.evaluate(prices, audit, null);
 
     if (!strategy.shouldTrade) {
       Logger.log('warn', `Strategy HOLD: ${strategy.reason}`);
@@ -109,8 +121,12 @@ export class QuantumBrain {
         status: result.success ? 'SUCCESS' : 'FAILED',
         error: result.error,
         tier: signal.tier,
-        reason: signal.reason
+        reason: signal.reason,
+        isPaperTrade: result.txHash?.startsWith('PAPER')
       });
+      if (this.io) {
+        this.io.emit('trade_update', { event: 'NEW_TRADE' });
+      }
     } catch (e) {
       Logger.log('error', `Failed to save trade to Supabase: ${e}`);
     }
@@ -121,6 +137,39 @@ export class QuantumBrain {
     } else {
       Logger.log('error', `EXECUTION FAILED: ${result.error}`);
       this.riskManager.recordTrade(false, 10);
+    }
+  }
+
+  private static readonly TIER1_ASSETS = [
+    { name: 'SOL', address: 'So11111111111111111111111111111111111111112', network: 'solana' },
+    { name: 'WBTC', address: '3NZ9JMVBmEUq5M6rMocCjM1Z1JkHihcE8A6xMwZZ4XUf', network: 'solana' },
+    { name: 'WETH', address: '0x4200000000000000000000000000000000000006', network: 'base' },
+    { name: 'cbBTC', address: '0xcbB7C0000aB88B473A1f5aFd9ef808440eed33Bf', network: 'base' }
+  ];
+
+  private static async pollTier1Assets() {
+    Logger.log('info', '[BRAIN] Polling Tier 1 Assets (BTC, ETH, SOL, BNB)...');
+    for (const asset of this.TIER1_ASSETS) {
+      try {
+        const evaluation = await MatrixEngine.evaluateTier1Asset(asset.address, asset.network);
+        if (evaluation.shouldBuy) {
+          Logger.log('info', `[BRAIN] Tier 1 Signal for ${asset.name}: ${evaluation.reason}`);
+          const signal: TradeSignal = {
+            network: asset.network as any, // Cast network to matching type
+            tokenAddress: asset.address,
+            action: 'BUY',
+            amount: '0.05', // Default tier 1 baseline allocation
+            tier: 1,
+            confidence: evaluation.confidence,
+            reason: evaluation.reason
+          };
+          await this.executeSignal(signal);
+        } else {
+          Logger.log('info', `[BRAIN] Tier 1 Watch: ${asset.name} - ${evaluation.reason}`);
+        }
+      } catch (e) {
+        Logger.log('error', `[BRAIN] Error polling Tier 1 asset ${asset.name}: ${e}`);
+      }
     }
   }
 }

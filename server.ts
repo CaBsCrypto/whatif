@@ -13,19 +13,31 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { WalletService } from "./src/services/walletService.js";
-import { Logger } from "./src/services/logger.js";
-import { QuantumBrain } from "./src/core/quantum_brain.js";
+import { WalletService } from "./src/services/walletService";
+import { Logger } from "./src/services/logger";
+import { QuantumBrain } from "./src/core/quantum_brain";
+
+// Allowed origins: localhost for dev, Vercel URL for production
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  process.env.FRONTEND_URL || "", // e.g. https://quantumalpha.vercel.app
+].filter(Boolean);
 
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: ALLOWED_ORIGINS,
+      methods: ["GET", "POST"],
+    },
+  });
   const PORT = 3000;
 
   // Initialize Core Services
   Logger.init(io);
-  QuantumBrain.init();
+  QuantumBrain.init(io);
 
   app.use(express.json());
 
@@ -48,6 +60,18 @@ async function startServer() {
     } catch (error) {
       console.error("Error fetching wallets:", error);
       res.status(500).json({ error: "Failed to fetch wallets" });
+    }
+  });
+
+  app.get("/api/trades", async (req, res) => {
+    try {
+      // Lazy load to avoid circular dependencies locally 
+      const { SupabaseService } = await import("./src/services/supabaseService");
+      const history = await SupabaseService.getTradeHistory();
+      res.json(history || []);
+    } catch (error) {
+      console.error("Error fetching trades:", error);
+      res.status(500).json({ error: "Failed to fetch trades" });
     }
   });
 

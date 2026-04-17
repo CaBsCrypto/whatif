@@ -41,6 +41,20 @@ const mockChartData = Array.from({ length: 20 }, (_, i) => ({
   volume: Math.random() * 1000
 }));
 
+export interface TradeRecordLocal {
+  id: string;
+  timestamp: number;
+  network: string;
+  tokenAddress: string;
+  action: 'BUY' | 'SELL';
+  amount: string;
+  price?: number;
+  txHash?: string;
+  status: 'SUCCESS' | 'FAILED';
+  tier: number;
+  isPaperTrade?: boolean;
+}
+
 export default function App() {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [logs, setLogs] = useState<{type: string, msg: string}[]>([]);
@@ -55,6 +69,8 @@ export default function App() {
   const [marketStyle, setMarketStyle] = useState<'TRENDING' | 'RANGING' | 'VOLATILE'>('RANGING');
   const [recommendations, setRecommendations] = useState<string[]>([]);
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
+  const [trades, setTrades] = useState<TradeRecordLocal[]>([]);
+  const [isLiveMode, setIsLiveMode] = useState(false);
   const [riskParams, setRiskParams] = useState({
     maxSlippage: 0.5,
     maxDrawdown: 5.0,
@@ -71,12 +87,25 @@ export default function App() {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Socket Connection
-    socketRef.current = io();
+    // Socket Connection — uses VITE_API_URL in production (Google Cloud), same-origin in dev
+    const backendUrl = import.meta.env.VITE_API_URL || '';
+    socketRef.current = io(backendUrl);
     
+    const fetchTrades = async () => {
+      try {
+        const res = await fetch('/api/trades');
+        if (res.ok) {
+          const data = await res.json();
+          setTrades(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch trades:', err);
+      }
+    };
+
     socketRef.current.on('log', (newLog) => {
       setLogs(prev => [...prev.slice(-50), newLog]);
-      if (newLog.msg.includes('VORTEX: New Pair')) {
+      if (newLog.msg.includes('VORTEX: New Pair') || newLog.msg.includes('RAYDIUM LP INITIALIZATION DETECTED')) {
         setVortexEvents(prev => [{
           id: Date.now(),
           msg: newLog.msg,
@@ -84,6 +113,12 @@ export default function App() {
         }, ...prev.slice(0, 4)]);
       }
     });
+
+    socketRef.current.on('trade_update', () => {
+      fetchTrades();
+    });
+
+    fetchTrades();
 
     const fetchAgents = async () => {
       try {
@@ -221,14 +256,14 @@ export default function App() {
           <div className="flex items-center gap-3 px-3 py-1 bg-white/5 border border-white/10 rounded-sm">
             <span className="text-[9px] font-mono opacity-50 uppercase">Execution Mode:</span>
             <div className="flex gap-1">
-              <button className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[9px] font-bold rounded-sm border border-purple-500/30">PAPER</button>
-              <button className="px-2 py-0.5 opacity-20 text-[9px] font-bold rounded-sm hover:opacity-100 transition-opacity">LIVE</button>
+              <button onClick={() => setIsLiveMode(false)} className={`px-2 py-0.5 text-[9px] font-bold rounded-sm border transition-all ${!isLiveMode ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'opacity-20 translate-y-0.5 border-transparent text-white'}`}>PAPER</button>
+              <button onClick={() => setIsLiveMode(true)} className={`px-2 py-0.5 text-[9px] font-bold rounded-sm border transition-all ${isLiveMode ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'opacity-20 translate-y-0.5 border-transparent text-white'}`}>LIVE</button>
             </div>
           </div>
           <div className="h-8 w-[1px] bg-[var(--line)]" />
           <div className="text-right">
-            <p className="text-[10px] opacity-50 uppercase font-mono">Net Profit (Est.)</p>
-            <p className="text-sm font-mono text-[var(--accent)]">+$842.12</p>
+            <p className="text-[10px] opacity-50 uppercase font-mono">P/L (Est.)</p>
+            <p className="text-sm font-mono text-[var(--accent)]">+---</p>
           </div>
           <div className="h-8 w-[1px] bg-[var(--line)]" />
           <button 
@@ -446,16 +481,16 @@ export default function App() {
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h3 className="text-sm font-bold uppercase tracking-tight">Performance Matrix</h3>
-                  <p className="text-[10px] opacity-40 font-mono">Aggregate Alpha across all Tiers</p>
+                  <p className="text-[10px] opacity-40 font-mono">PnL Curve (Estimated value from buys over time)</p>
                 </div>
                 <div className="flex gap-2">
-                  <button className="px-3 py-1 bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[10px] font-mono rounded-sm text-[var(--accent)]">LIVE</button>
+                  <button className="px-3 py-1 bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[10px] font-mono rounded-sm text-[var(--accent)]">ALL VORTEX EVENTS</button>
                 </div>
               </div>
 
               <div className="flex-1 min-h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockChartData}>
+                  <AreaChart data={trades.length > 0 ? trades.map((t, i) => ({ time: i, value: 100 + i * 2, volume: Math.random() * 500 })) : mockChartData}>
                     <defs>
                       <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3}/>
@@ -473,6 +508,29 @@ export default function App() {
                     <Area type="monotone" dataKey="volume" stroke="#8884d8" fillOpacity={0.1} fill="#8884d8" strokeWidth={1} />
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+              
+              {/* Recent Trades Panel under the chart */}
+              <div className="mt-4 border-t border-[var(--line)] pt-4 max-h-[150px] overflow-y-auto">
+                <h4 className="text-[10px] font-bold uppercase mb-2 opacity-50">Recent System Missions</h4>
+                <div className="space-y-1">
+                  {trades.filter(t => isLiveMode ? t.isPaperTrade !== true : true).slice(0, 5).map((t, idx) => (
+                    <div key={idx} className="flex justify-between items-center bg-white/5 p-2 rounded-sm border border-white/10 text-[9px] font-mono">
+                      <div className="flex items-center gap-4">
+                        <span className={t.action === 'BUY' ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>{t.action}</span>
+                        <span className="opacity-80 truncate max-w-[100px]">{t.tokenAddress}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="opacity-60">{t.amount} {t.network === 'solana' ? 'SOL' : 'ETH'}</span>
+                        <span className={t.isPaperTrade ? 'text-purple-400 bg-purple-500/10 px-1 py-0.5 rounded-sm' : 'text-orange-400 bg-orange-500/10 px-1 py-0.5'}>
+                          {t.isPaperTrade ? 'PAPER' : 'LIVE'}
+                        </span>
+                        <span className={t.status === 'SUCCESS' ? 'text-green-500' : 'text-red-500'}>[{t.status}]</span>
+                      </div>
+                    </div>
+                  ))}
+                  {trades.length === 0 && <p className="text-[10px] opacity-30 text-center py-2 italic font-mono">- No transactions logged in database -</p>}
+                </div>
               </div>
             </div>
 
